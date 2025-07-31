@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Sensor Luis Antonio Romero López</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.27/"></script>
+  <style>
+    html, body, #viewDiv { margin:0; padding:0; height:100%; width:100%; }
+    #infoBox {
+      position: absolute; top: 10px; right: 10px;
+      background: white; padding:10px; border-radius:6px;
+      font-family: sans-serif; box-shadow:0 2px 6px rgba(0,0,0,0.3); z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="viewDiv"></div>
+
+<!-- Info y controles -->
+<div id="infoBox">
+  <div><strong>Sensores:</strong> <span id="onlineCount">0</span> online, <span id="offlineCount">0</span> offline</div>
+  <div style="margin-top: 6px;">
+    <label><input type="checkbox" id="toggleLayer" checked /> Mostrar sensores</label>
+  </div>
+</div>
+
+<script>
+  require([
+    "esri/Map",
+    "esri/views/MapView",
+    "esri/layers/GraphicsLayer",
+    "esri/Graphic",
+    "esri/geometry/Point",
+    "esri/symbols/SimpleMarkerSymbol",
+    "esri/PopupTemplate",
+    "esri/widgets/BasemapGallery",
+    "esri/widgets/Expand"
+  ], function(
+    Map, MapView, GraphicsLayer, Graphic, Point, SimpleMarkerSymbol, PopupTemplate,
+    BasemapGallery, Expand
+  ) {
+
+    const map = new Map({ basemap: "streets-vector" });
+    const view = new MapView({
+      container: "viewDiv",
+      map: map,
+      center: [-99.6680, 19.2926],
+      zoom: 10
+    });
+
+    // Capa de sensores
+    const layer = new GraphicsLayer();
+    map.add(layer);
+
+    const sensors = [];
+    const onlineSymbol = new SimpleMarkerSymbol({
+      color: "green", size: 10, outline: { color: "white", width: 1 }
+    });
+    const offlineSymbol = new SimpleMarkerSymbol({
+      color: "red", size: 10, outline: { color: "white", width: 1 }
+    });
+
+    // Generar sensores aleatorios
+    for (let i = 0; i < 50; i++) {
+      sensors.push({
+        id: i.toString(),
+        lon: -99.6 + Math.random() * 0.2,
+        lat: 19.3 + Math.random() * 0.2,
+        status: Math.random() > 0.5 ? "online" : "offline",
+        updated: new Date().toLocaleTimeString('es-MX')
+      });
+    }
+
+    function renderAll() {
+      layer.removeAll();
+      sensors.forEach(s => {
+        const point = new Point({ longitude: s.lon, latitude: s.lat });
+        const symbol = s.status === "online" ? onlineSymbol : offlineSymbol;
+        const template = new PopupTemplate({
+          title: `Sensor ${s.id}`,
+          content: `
+            <strong>Estado:</strong> ${s.status}<br/>
+            <strong>Última actualización:</strong> ${s.updated}
+          `
+        });
+        const g = new Graphic({ geometry: point, symbol, attributes: s, popupTemplate: template });
+        layer.add(g);
+      });
+      updateInfo();
+    }
+
+    function updateInfo() {
+      let online = 0;
+      sensors.forEach(s => { if (s.status === "online") online++; });
+      document.getElementById("onlineCount").textContent = online;
+      document.getElementById("offlineCount").textContent = sensors.length - online;
+    }
+
+    function renderSingle(i) {
+      const s = sensors[i];
+      const g = layer.graphics.find(g => g.attributes.id === s.id);
+      if (g) {
+        g.symbol = s.status === "online" ? onlineSymbol : offlineSymbol;
+        g.attributes.status = s.status;
+        g.attributes.updated = s.updated;
+      } else {
+        renderAll();
+      }
+      updateInfo();
+    }
+
+    // Simulación en tiempo real
+    setInterval(() => {
+      const idx = Math.floor(Math.random() * sensors.length);
+      sensors[idx].status = sensors[idx].status === "online" ? "offline" : "online";
+      sensors[idx].updated = new Date().toLocaleTimeString('es-MX');
+      renderSingle(idx);
+    }, 5000);
+
+    // Widget: Galería de mapas base
+    const basemapGallery = new BasemapGallery({
+      view: view,
+      container: document.createElement("div")
+    });
+
+    const expandGallery = new Expand({
+      view: view,
+      content: basemapGallery,
+      expandTooltip: "Cambiar mapa base"
+    });
+    view.ui.add(expandGallery, "top-left");
+
+    // Checkbox para activar/desactivar capa
+    const checkbox = document.getElementById("toggleLayer");
+    checkbox.addEventListener("change", () => {
+      layer.visible = checkbox.checked;
+    });
+
+    view.when(() => renderAll());
+  });
+</script>
+
+</body>
+</html>
