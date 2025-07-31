@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sensor Luis Antonio Romero López - React + ArcGIS</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css" />
+  <style>
+    html, body, #root {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React y ReactDOM desde CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- ArcGIS JS API -->
+  <script src="https://js.arcgis.com/4.27/"></script>
+
+  <!-- Nuestro componente React -->
+  <script type="text/javascript">
+    const { useEffect, useRef, useState } = React;
+    const { createRoot } = ReactDOM;
+
+    function SensorMap() {
+      const mapRef = useRef(null);
+      const [onlineCount, setOnlineCount] = useState(0);
+      const [offlineCount, setOfflineCount] = useState(0);
+      const [showLayer, setShowLayer] = useState(true);
+      const layerRef = useRef(null);
+      const viewRef = useRef(null);
+      const sensorsRef = useRef([]);
+
+      useEffect(() => {
+        require([
+          "esri/Map",
+          "esri/views/MapView",
+          "esri/layers/GraphicsLayer",
+          "esri/Graphic",
+          "esri/geometry/Point",
+          "esri/symbols/SimpleMarkerSymbol",
+          "esri/PopupTemplate",
+          "esri/widgets/BasemapGallery",
+          "esri/widgets/Expand"
+        ], (
+          Map, MapView, GraphicsLayer, Graphic, Point, SimpleMarkerSymbol, PopupTemplate,
+          BasemapGallery, Expand
+        ) => {
+          const map = new Map({ basemap: "streets-vector" });
+          const view = new MapView({
+            container: mapRef.current,
+            map: map,
+            center: [-99.6680, 19.2926],
+            zoom: 10
+          });
+          viewRef.current = view;
+
+          const layer = new GraphicsLayer();
+          layerRef.current = layer;
+          map.add(layer);
+
+          const onlineSymbol = new SimpleMarkerSymbol({
+            color: "green", size: 10, outline: { color: "white", width: 1 }
+          });
+          const offlineSymbol = new SimpleMarkerSymbol({
+            color: "red", size: 10, outline: { color: "white", width: 1 }
+          });
+
+          // Crear sensores
+          const sensors = [];
+          for (let i = 0; i < 50; i++) {
+            sensors.push({
+              id: i.toString(),
+              lon: -99.6 + Math.random() * 0.2,
+              lat: 19.3 + Math.random() * 0.2,
+              status: Math.random() > 0.5 ? "online" : "offline",
+              updated: new Date().toLocaleTimeString("es-MX")
+            });
+          }
+          sensorsRef.current = sensors;
+
+          function updateCounts() {
+            const online = sensors.filter(s => s.status === "online").length;
+            setOnlineCount(online);
+            setOfflineCount(sensors.length - online);
+          }
+
+          function renderAll() {
+            layer.removeAll();
+            sensors.forEach(s => {
+              const point = new Point({ longitude: s.lon, latitude: s.lat });
+              const symbol = s.status === "online" ? onlineSymbol : offlineSymbol;
+              const template = new PopupTemplate({
+                title: `Sensor ${s.id}`,
+                content: `<strong>Estado:</strong> ${s.status}<br/><strong>Última actualización:</strong> ${s.updated}`
+              });
+              const graphic = new Graphic({ geometry: point, symbol, attributes: s, popupTemplate: template });
+              layer.add(graphic);
+            });
+            updateCounts();
+          }
+
+          function renderSingle(i) {
+            const s = sensors[i];
+            const g = layer.graphics.find(g => g.attributes?.id === s.id);
+            if (g) {
+              g.symbol = s.status === "online" ? onlineSymbol : offlineSymbol;
+              g.attributes.status = s.status;
+              g.attributes.updated = s.updated;
+            } else {
+              renderAll();
+            }
+            updateCounts();
+          }
+
+          const interval = setInterval(() => {
+            const idx = Math.floor(Math.random() * sensors.length);
+            sensors[idx].status = sensors[idx].status === "online" ? "offline" : "online";
+            sensors[idx].updated = new Date().toLocaleTimeString("es-MX");
+            renderSingle(idx);
+          }, 5000);
+
+          const basemapGallery = new BasemapGallery({
+            view,
+            container: document.createElement("div")
+          });
+
+          const expandGallery = new Expand({
+            view,
+            content: basemapGallery,
+            expandTooltip: "Cambiar mapa base"
+          });
+          view.ui.add(expandGallery, "top-left");
+
+          renderAll();
+
+          return () => {
+            clearInterval(interval);
+            view.destroy();
+          };
+        });
+      }, []);
+
+      function toggleLayer(e) {
+        const visible = e.target.checked;
+        setShowLayer(visible);
+        if (layerRef.current) {
+          layerRef.current.visible = visible;
+        }
+      }
+
+      return (
+        React.createElement("div", { style: { height: "100%", width: "100%", position: "relative" } },
+          React.createElement("div", { ref: mapRef, style: { height: "100%", width: "100%" } }),
+          React.createElement("aside", {
+            style: {
+              position: "absolute",
+              top: 10,
+              right: 10,
+              background: "white",
+              padding: 10,
+              borderRadius: 6,
+              boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+              zIndex: 99,
+              fontFamily: "sans-serif"
+            }
+          },
+            React.createElement("div", null, 
+              React.createElement("strong", null, "Sensores: "), 
+              onlineCount, " online, ", offlineCount, " offline"
+            ),
+            React.createElement("div", { style: { marginTop: 6 } },
+              React.createElement("label", null,
+                React.createElement("input", {
+                  type: "checkbox",
+                  checked: showLayer,
+                  onChange: toggleLayer
+                }),
+                " Mostrar sensores"
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const root = createRoot(document.getElementById("root"));
+    root.render(React.createElement(SensorMap));
+  </script>
+</body>
+</html>

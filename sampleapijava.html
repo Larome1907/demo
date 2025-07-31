@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Mapa 2D con Análisis Espacial - Toluca</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.26/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.26/"></script>
+  <style>
+    html, body, #viewDiv {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    #infoPanel {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      z-index: 99;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 4px;
+      max-width: 300px;
+      font-size: 0.9em;
+      box-shadow: 0 0 5px #888;
+      max-height: 30%;
+      overflow-y: auto;
+    }
+    #analysisBtn {
+      position: absolute;
+      top: 100px;
+      right: 10px;
+      z-index: 99;
+      padding: 8px 12px;
+      background: #0079c1;
+      color: white;
+      font-weight: bold;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 0 5px #555;
+    }
+    #analysisBtn:disabled {
+      background: gray;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewDiv"></div>
+  <button id="analysisBtn" disabled>Crear Buffer y Analizar</button>
+  <div id="infoPanel"><b>Info:</b> Dibuja o selecciona un elemento para hacer análisis espacial.</div>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/FeatureLayer",
+      "esri/layers/GraphicsLayer",
+      "esri/widgets/BasemapGallery",
+      "esri/widgets/Sketch",
+      "esri/widgets/Editor",
+      "esri/widgets/Measurement",
+      "esri/widgets/LayerList",
+      "esri/widgets/Home",
+      "esri/widgets/Legend",
+      "esri/widgets/Search",
+      "esri/widgets/Expand",
+      "esri/widgets/Compass",
+      "esri/widgets/ScaleBar",
+      "esri/widgets/Track",
+      "esri/Graphic",
+      "esri/geometry/geometryEngine",
+      "esri/core/watchUtils"
+    ], function (
+      Map, MapView, FeatureLayer, GraphicsLayer, BasemapGallery, Sketch, Editor,
+      Measurement, LayerList, Home, Legend, Search, Expand, Compass, ScaleBar,
+      Track, Graphic, geometryEngine, watchUtils
+    ) {
+
+      const map = new Map({ basemap: "streets-vector" });
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-99.6680, 19.2926], // Toluca
+        zoom: 14
+      });
+
+      const featureLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/LA_Trails/FeatureServer/0",
+        outFields: ["*"],
+        popupTemplate: {
+          title: "Trail: {TRL_NAME}",
+          content: "Longitud: {LENGTH} km"
+        },
+        visible: true
+      });
+      map.add(featureLayer);
+
+      const graphicsLayer = new GraphicsLayer({ title: "Elementos dibujados" });
+      map.add(graphicsLayer);
+
+      const bufferLayer = new GraphicsLayer({ title: "Buffer de Análisis" });
+      map.add(bufferLayer);
+
+      const popupTemplate = {
+        title: "{type}: {name}",
+        content: [{
+          type: "fields",
+          fieldInfos: [
+            { fieldName: "name", label: "Nombre", isEditable: true },
+            { fieldName: "description", label: "Descripción", isEditable: true }
+          ]
+        }]
+      };
+
+      function agregarPuntosAleatorios() {
+        const datasetCoorx = [-99.6680, -99.6675, -99.6660, -99.6650, -99.6692, -99.6678];
+        const datasetCoory = [19.2926, 19.2932, 19.2945, 19.2910, 19.2951, 19.2903];
+
+        const sensorIconUrl = "https://cdn-icons-png.flaticon.com/512/190/190411.png";
+
+        for (let i = 0; i < datasetCoorx.length; i++) {
+          const lon = datasetCoorx[i];
+          const lat = datasetCoory[i];
+          const pt = { type: "point", longitude: lon, latitude: lat };
+
+          const graphic = new Graphic({
+            geometry: pt,
+            attributes: {
+              type: "Sensor",
+              name: `Sensor ${i + 1}`,
+              description: "Sensor ambiental"
+            },
+            popupTemplate: popupTemplate,
+            symbol: {
+              type: "picture-marker",
+              url: sensorIconUrl,
+              width: "24px",
+              height: "24px"
+            }
+          });
+
+          graphicsLayer.add(graphic);
+        }
+      }
+      agregarPuntosAleatorios();
+
+      // Widgets
+      const basemapGallery = new BasemapGallery({ view });
+      const basemapExpand = new Expand({ view, content: basemapGallery, expanded: false });
+      view.ui.add(basemapExpand, "top-right");
+
+      const sketch = new Sketch({ layer: graphicsLayer, view: view, creationMode: "update" });
+      view.ui.add(sketch, "top-left");
+
+      const editor = new Editor({ view: view, layerInfos: [{ layer: graphicsLayer }] });
+      view.ui.add(editor, "top-left");
+
+      const measurement = new Measurement({ view: view });
+      view.ui.add(measurement, "top-left");
+
+      const layerList = new LayerList({ view });
+      view.ui.add(layerList, "top-left");
+
+      const home = new Home({ view });
+      view.ui.add(home, "top-left");
+
+      const legend = new Legend({ view });
+      const legendExpand = new Expand({ view, content: legend });
+      view.ui.add(legendExpand, "bottom-left");
+
+      const search = new Search({ view });
+      const searchExpand = new Expand({ view, content: search });
+      view.ui.add(searchExpand, "top-left");
+
+      const compass = new Compass({ view });
+      view.ui.add(compass, "top-left");
+
+      const scaleBar = new ScaleBar({ view, unit: "metric" });
+      view.ui.add(scaleBar, "bottom-right");
+
+      const track = new Track({ view });
+      view.ui.add(track, "top-left");
+
+      const infoPanel = document.getElementById("infoPanel");
+
+      let selectedGraphic = null;
+
+      view.on("click", event => {
+        view.hitTest(event).then(response => {
+          const results = response.results.filter(r => r.graphic);
+          if (results.length > 0) {
+            const graphic = results[0].graphic;
+            const attrs = graphic.attributes;
+            infoPanel.innerHTML = `<b>Elemento seleccionado:</b><br>
+              <b>Tipo:</b> ${attrs.type || "N/A"}<br>
+              <b>Nombre:</b> ${attrs.name || "N/A"}<br>
+              <b>Descripción:</b> ${attrs.description || "N/A"}`;
+            document.getElementById("analysisBtn").disabled = false;
+            selectedGraphic = graphic;
+          } else {
+            infoPanel.innerHTML = `<b>Info:</b> Selecciona o dibuja elementos para editar atributos.`;
+            document.getElementById("analysisBtn").disabled = true;
+            selectedGraphic = null;
+          }
+        });
+      });
+
+      document.getElementById("analysisBtn").addEventListener("click", () => {
+        if (!selectedGraphic) return;
+
+        bufferLayer.removeAll();
+        graphicsLayer.graphics.forEach(g => {
+          g.symbol = {
+            type: g.geometry.type === "point" ? "picture-marker" : g.geometry.type === "polyline" ? "simple-line" : "simple-fill",
+            url: g.geometry.type === "point" ? "https://cdn-icons-png.flaticon.com/512/190/190411.png" : undefined,
+            color: g.geometry.type === "polyline" ? [0, 0, 255, 0.5] : [0, 0, 255, 0.25],
+            outline: { color: "white", width: 1 },
+            width: "24px",
+            height: "24px"
+          };
+        });
+
+        const bufferDistance = 200;
+        const buffer = geometryEngine.buffer(selectedGraphic.geometry, bufferDistance, "meters");
+
+        const bufferGraphic = new Graphic({
+          geometry: buffer,
+          symbol: {
+            type: "simple-fill",
+            color: [255, 0, 0, 0.3],
+            outline: { color: "red", width: 2 }
+          }
+        });
+        bufferLayer.add(bufferGraphic);
+
+        const intersectingGraphics = graphicsLayer.graphics.filter(g => {
+          if (g === selectedGraphic) return false;
+          return geometryEngine.intersects(buffer, g.geometry);
+        });
+
+        intersectingGraphics.forEach(g => {
+          if (g.geometry.type === "point") {
+            g.symbol = {
+              type: "simple-marker",
+              color: "green",
+              size: 12,
+              outline: { color: "white", width: 2 }
+            };
+          } else if (g.geometry.type === "polyline") {
+            g.symbol = {
+              type: "simple-line",
+              color: "green",
+              width: 4
+            };
+          } else if (g.geometry.type === "polygon") {
+            g.symbol = {
+              type: "simple-fill",
+              color: [0, 255, 0, 0.4],
+              outline: { color: "green", width: 2 }
+            };
+          }
+        });
+
+        infoPanel.innerHTML = `<b>Buffer creado (200 m)</b><br>
+          Elemento seleccionado: ${selectedGraphic.attributes.name || "N/A"}<br>
+          Elementos intersectados: ${intersectingGraphics.length}`;
+      });
+
+    });
+  </script>
+</body>
+</html>
